@@ -3,11 +3,6 @@ variable "aws_region" {
   type        = string
 }
 
-variable "website_bucket_name" {
-  description = "Name to assign to the S3 bucket holding site files"
-  type        = string
-}
-
 variable "domain_name" {
   description = "Domain name for the speed test site"
   type        = string
@@ -15,5 +10,15 @@ variable "domain_name" {
 
 variable "tld" {
   description = "Top-level domain for the speed test site"
+  type        = string
+}
+
+variable "website_bucket_name" {
+  description = "Name to assign to the S3 bucket holding site files"
+  type        = string
+}
+
+variable "data_bucket_name" {
+  description = "Name to assign to the S3 bucket collecting data"
   type        = string
 }
