@@ -3,6 +3,7 @@
 *.tfstate.*
 build
 
+lambda_pkg
 secrets.tfvars
 .ipynb_checkpoints
 
