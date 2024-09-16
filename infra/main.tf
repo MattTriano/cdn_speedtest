@@ -66,6 +66,22 @@ resource "aws_s3_bucket_policy" "website" {
 ############### cloudfront ##############
 #########################################
 
+resource "aws_cloudfront_function" "post_request_ok" {
+  name    = local.name_prefix != "" ? "post-request-ok_${local.name_prefix}" : "post-request-ok"
+  runtime = "cloudfront-js-2.0"
+  comment = "viewer-request event handler to give POST requests an immediate response of 204 No Content (rather than the service default of 403 Forbidden)"
+  publish = true
+  code    = file("${path.module}/functions/post-request-ok.js")
+}
+
+resource "aws_cloudfront_function" "redirect_remove_www" {
+  name    = local.name_prefix != "" ? "redirect-remove-www_${local.name_prefix}" : "redirect-remove-www"
+  runtime = "cloudfront-js-2.0"
+  comment = "viewer-request event handler to redirect requests for a www.DO.MAIN host to DO.MAIN"
+  publish = true
+  code    = file("${path.module}/functions/redirect-remove-www.js")
+}
+
 resource "aws_cloudfront_distribution" "website_distribution" {
   origin {
     domain_name = aws_s3_bucket.website_bucket.bucket_regional_domain_name
@@ -74,32 +90,80 @@ resource "aws_cloudfront_distribution" "website_distribution" {
     s3_origin_config {
       origin_access_identity = aws_cloudfront_origin_access_identity.oai.cloudfront_access_identity_path
     }
+
+    origin_shield {
+      enabled              = true
+      origin_shield_region = var.aws_region
+    }
   }
 
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
+  http_version        = "http1.1"
+  price_class         = "PriceClass_100"
 
   default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${var.website_bucket_name}"
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method"]
-      cookies {
-        forward = "all"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cache_policy_id        = data.aws_cloudfront_cache_policy.cache_default.id
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${var.website_bucket_name}"
     min_ttl                = 0
     default_ttl            = 0
     max_ttl                = 0
+    viewer_protocol_policy = "redirect-to-https"
   }
 
-  price_class = "PriceClass_100"
+  ordered_cache_behavior {
+    path_pattern           = "/index.html"
+    allowed_methods        = ["GET", "HEAD"]
+    cache_policy_id        = data.aws_cloudfront_cache_policy.cache_default.id
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${var.website_bucket_name}"
+    compress               = "true"
+    default_ttl            = "0"
+    max_ttl                = "0"
+    min_ttl                = "0"
+    smooth_streaming       = "false"
+    viewer_protocol_policy = "redirect-to-https"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.redirect_remove_www.arn
+    }
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/assets/*"
+    allowed_methods        = ["GET", "HEAD"]
+    cache_policy_id        = data.aws_cloudfront_cache_policy.cache_default.id
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${var.website_bucket_name}"
+    compress               = "true"
+    default_ttl            = "0"
+    max_ttl                = "0"
+    min_ttl                = "0"
+    smooth_streaming       = "false"
+    viewer_protocol_policy = "redirect-to-https"
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/upload"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cache_policy_id        = data.aws_cloudfront_cache_policy.cache_default.id
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${var.website_bucket_name}"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+    compress               = false
+    viewer_protocol_policy = "redirect-to-https"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.post_request_ok.arn
+    }
+  }
 
   restrictions {
     geo_restriction {
@@ -263,7 +327,7 @@ resource "aws_lambda_function" "route_data" {
 
   environment {
     variables = {
-      OUTPUT_BUCKET  = aws_s3_bucket.output_bucket.id
+      OUTPUT_BUCKET   = aws_s3_bucket.output_bucket.id
       ALLOWED_ORIGINS = "${local.website_url},https://www.${local.domain_and_tld}"
     }
   }
@@ -328,3 +392,4 @@ resource "aws_iam_role_policy" "lambda_cloudwatch_policy" {
     ]
   })
 }
+

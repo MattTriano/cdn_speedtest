@@ -2,6 +2,8 @@
 
 This project experiments with setting up infrastructure (via `terraform`/`OpenTofu`) to serve a [speed test](https://github.com/openspeedtest/Speed-Test) via a CDN and collect the speed measurement data.
 
+This repo's speedtest is currently served [here](https://beadchallenge.net/).
+
 ## Prerequisites
 
 To follow these instructions, you will need to have:
